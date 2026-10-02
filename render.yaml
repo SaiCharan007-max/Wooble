@@ -1,0 +1,87 @@
+# Render Blueprint: one click creates the database and the three services (all on free plans).
+# Render dashboard -> New -> Blueprint -> pick this repository.
+# After the first deploy, fill in the three *_URL variables marked "sync: false" (see README "Deploy to Render").
+
+databases:
+  - name: homeward-db
+    plan: free
+    databaseName: homecare
+    user: homecare
+
+services:
+  # Backend API + WebSocket + the built dashboard (one public URL for everything users see)
+  - type: web
+    name: homeward-app
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node apps/backend/src/db/migrate.js && node apps/backend/src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: homeward-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEVICE_API_KEY
+        generateValue: true
+      - key: SIMULATOR_CONTROL_TOKEN
+        generateValue: true
+      - key: REDIS_URL
+        value: ""
+      - key: RISK_ENGINE_URL # e.g. https://homeward-risk.onrender.com
+        sync: false
+      - key: SIMULATOR_URL # e.g. https://homeward-simulator.onrender.com
+        sync: false
+      - key: VITE_HUB_URL # same as SIMULATOR_URL (used at build time for the "home hub screen" link)
+        sync: false
+      - key: DASHBOARD_URL # this service's own URL, used in phone alerts
+        sync: false
+      - key: RISK_ENGINE_TIMEOUT_MS
+        value: "10000"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+
+  # Explainable risk engine (Python / FastAPI)
+  - type: web
+    name: homeward-risk
+    runtime: python
+    plan: free
+    rootDir: apps/risk-engine
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+
+  # Sensor simulator + home hub screen
+  - type: web
+    name: homeward-simulator
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev
+    startCommand: node apps/sensor-simulator/src/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DEVICE_API_KEY
+        fromService:
+          type: web
+          name: homeward-app
+          envVarKey: DEVICE_API_KEY
+      - key: SIMULATOR_CONTROL_TOKEN
+        fromService:
+          type: web
+          name: homeward-app
+          envVarKey: SIMULATOR_CONTROL_TOKEN
+      - key: BACKEND_URL # the homeward-app URL, e.g. https://homeward-app.onrender.com
+        sync: false

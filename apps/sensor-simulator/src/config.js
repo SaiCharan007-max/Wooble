@@ -6,7 +6,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 dotenv.config({ path: [path.resolve(ROOT, 'apps/sensor-simulator/.env'), path.resolve(ROOT, '.env')] });
 
 export const config = Object.freeze({
-  port: Number(process.env.SIMULATOR_PORT || 4100),
+  port: Number(process.env.SIMULATOR_PORT || process.env.PORT || 4100), // PORT is set by hosts like Render
   backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
   deviceApiKey: process.env.DEVICE_API_KEY || 'dev-device-key',
   controlToken: process.env.SIMULATOR_CONTROL_TOKEN || 'dev-simulator-token',

@@ -1,8 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import { DISCLAIMER } from '@homecare/shared';
-import { env } from './config/env.js';
+import { env, ROOT_DIR } from './config/env.js';
 import { db } from './db/pool.js';
 import { queueMode } from './lib/queue.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
@@ -34,6 +36,14 @@ export function createApp() {
   });
 
   app.use('/api', routes);
+
+  // In production the built dashboard is served from here too: one URL, same origin, no CORS setup.
+  const dist = path.join(ROOT_DIR, 'apps/frontend/dist');
+  if (fs.existsSync(path.join(dist, 'index.html'))) {
+    app.use(express.static(dist, { index: false, maxAge: '1h' }));
+    app.get(/^\/(?!api\/|socket\.io\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  }
+
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;

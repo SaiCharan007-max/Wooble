@@ -201,6 +201,27 @@ npm run evaluate
 3. Alerts now arrive on your phone. Tap **✅ Acknowledge** and the dashboard updates live. Send `/status` for a quick overview of all patients.
 No public URL is needed: the backend long-polls Telegram for button taps. The backend tests need `npm run db:start` running and use the `homecare_test` database.
 
+## Deploy to Render (free)
+`render.yaml` is a Render Blueprint that creates a free PostgreSQL database plus 3 free web services:
+**homeward-app** (backend API + dashboard), **homeward-risk** (Python risk engine) and **homeward-simulator** (sensors + home hub screen).
+
+1. Push this repo to GitHub, sign up at https://render.com with GitHub (no card needed).
+2. **New → Blueprint →** pick the repository → **Apply**. Leave the variables marked *sync: false* empty for now.
+3. When the services exist, copy their URLs from the Render dashboard and set:
+   | Service | Variable | Value |
+   |---|---|---|
+   | homeward-app | `RISK_ENGINE_URL` | URL of homeward-risk |
+   | homeward-app | `SIMULATOR_URL` and `VITE_HUB_URL` | URL of homeward-simulator |
+   | homeward-app | `DASHBOARD_URL` | URL of homeward-app |
+   | homeward-simulator | `BACKEND_URL` | URL of homeward-app |
+   | homeward-app *(optional)* | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | as in your local `.env` |
+4. Saving the variables redeploys. Open the **homeward-app** URL and sign in with the demo accounts.
+
+Notes: free services sleep after 15 minutes without visitors, so the **first visit takes about a minute** while they wake up
+(open the app and the home hub screen a few minutes before presenting). A Telegram bot can only be polled by one
+backend at a time, so stop your local backend (or use a second bot) when the hosted one uses the same token.
+The free database expires after 30 days.
+
 ## 12. Demo instructions (≈ 3 minutes)
 **Demo credentials:**
 | Role | Email | Password |

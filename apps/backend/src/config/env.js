@@ -18,7 +18,7 @@ export const env = Object.freeze({
   port: num(process.env.PORT, 4000),
   databaseUrl: (isTest && process.env.DATABASE_URL_TEST) || process.env.DATABASE_URL ||
     'postgres://homecare:homecare@localhost:5433/homecare',
-  redisUrl: isTest ? process.env.REDIS_URL_TEST || '' : process.env.REDIS_URL ?? 'redis://localhost:6379',
+  redisUrl: isTest ? process.env.REDIS_URL_TEST || '' : process.env.REDIS_URL || '', // empty = inline jobs
   jwtSecret: process.env.JWT_SECRET || 'dev-only-insecure-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   deviceApiKey: process.env.DEVICE_API_KEY || 'dev-device-key',
