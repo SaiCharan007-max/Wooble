@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sensor Simulator Controls</title>
+  <style>
+    body { font: 15px system-ui, sans-serif; margin: 24px; color: #1e293b; background: #f8fafc; }
+    h1 { font-size: 20px; } table { border-collapse: collapse; margin: 12px 0; }
+    td, th { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    button { margin: 2px; padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer; }
+    .bar { margin: 10px 0; } .pill { padding: 2px 8px; border-radius: 99px; background: #e2e8f0; }
+  </style>
+  <script src="/token.js"></script>
+</head>
+<body>
+  <h1>Sensor Simulator - demo controls</h1>
+  <p>Prototype tool. The main dashboard has the same controls.</p>
+  <div class="bar">Network: <span id="net" class="pill"></span> · Buffered readings: <b id="buf"></b> ·
+    <button onclick="send({network:'OFFLINE'})">Simulate power/connectivity failure</button>
+    <button onclick="send({network:'ONLINE'})">Restore connection</button></div>
+  <div class="bar">Speed: <button onclick="send({speed:1})">1x</button><button onclick="send({speed:5})">5x</button>
+    <button onclick="send({speed:10})">10x</button> <button onclick="post('/reset',{})">Reset demo</button></div>
+  <table><thead><tr><th>Device</th><th>Patient</th><th>Scenario</th><th>Last reading</th><th>Set scenario</th></tr></thead>
+    <tbody id="rows"></tbody></table>
+<script>
+  const SC = ['NORMAL','GRADUAL_DETERIORATION','SUDDEN_DETERIORATION','RECOVERY','SENSOR_FAILURE'];
+  const post = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-control-token': window.CONTROL_TOKEN }, body: JSON.stringify(body) }).then(refresh);
+  const send = (body) => post('/control', body);
+  async function refresh() {
+    const s = await fetch('/status', { headers: { 'x-control-token': window.CONTROL_TOKEN } }).then(r => r.json());
+    document.getElementById('net').textContent = s.uplink.mode;
+    document.getElementById('buf').textContent = s.uplink.buffered;
+    document.getElementById('rows').innerHTML = s.devices.map(d => {
+      const r = d.lastReading;
+      const txt = r ? `HR ${r.heart_rate} · SpO2 ${r.spo2}% · RR ${r.respiratory_rate} · ${r.temperature}°C` : '-';
+      return `<tr><td>${d.deviceUid}</td><td>${d.name}</td><td>${d.scenario}</td><td>${txt}</td><td>` +
+        SC.map(x => `<button onclick="send({patientId:'${d.patientId}',scenario:'${x}'})">${x.replace('_',' ').toLowerCase()}</button>`).join('') + '</td></tr>';
+    }).join('');
+  }
+  refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

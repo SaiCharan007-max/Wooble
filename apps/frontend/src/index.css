@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+body {
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+.card {
+  @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500;
+}
+
+.btn-primary {
+  @apply border-sky-700 bg-sky-700 text-white hover:bg-sky-800;
+}
+
+.btn-danger {
+  @apply border-red-600 bg-red-600 text-white hover:bg-red-700;
+}
+
+.label {
+  @apply text-xs font-semibold uppercase tracking-wide text-slate-500;
+}

@@ -1,0 +1,36 @@
+{
+  "name": "home-care-monitoring",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart Home-Care Patient Monitoring System - hackathon prototype (Sense -> Understand -> Predict -> Alert -> Respond)",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "apps/backend",
+    "apps/sensor-simulator",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "db:start": "node scripts/local-db.js",
+    "db:migrate": "npm run migrate -w apps/backend",
+    "db:reset": "npm run db:reset -w apps/backend",
+    "dev": "concurrently -k -n risk,api,sim,web -c magenta,blue,yellow,green \"npm:dev:risk\" \"npm:dev:backend\" \"npm:dev:simulator\" \"npm:dev:frontend\"",
+    "dev:risk": "cd apps/risk-engine && python -m uvicorn app.main:app --port 8000",
+    "dev:backend": "npm run dev -w apps/backend",
+    "dev:simulator": "npm run dev -w apps/sensor-simulator",
+    "dev:frontend": "npm run dev -w apps/frontend",
+    "test": "npm run test:risk && npm run test:simulator && npm run test:backend",
+    "test:risk": "cd apps/risk-engine && python -m pytest -q",
+    "test:simulator": "npm test -w apps/sensor-simulator",
+    "test:backend": "npm test -w apps/backend",
+    "build": "npm run build -w apps/frontend",
+    "setup": "npm install && pip install -r apps/risk-engine/requirements.txt && npm run db:migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "embedded-postgres": "^18.4.0-beta.17"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
