@@ -140,6 +140,7 @@ async function handleMessage(msg) {
   const chatId = String(msg.chat.id);
   const text = (msg.text || '').trim().toLowerCase();
   if (text.startsWith('/start') || text.startsWith('/id')) {
+    logger.info({ event_type: 'TELEGRAM_START', chat_id: chatId }, 'Telegram /start received - set TELEGRAM_CHAT_ID to this chat id');
     await tg('sendMessage', {
       chat_id: chatId, parse_mode: 'HTML',
       text: `👋 HomeWard alerts bot.\nYour chat id is <code>${esc(chatId)}</code>.\n` +
