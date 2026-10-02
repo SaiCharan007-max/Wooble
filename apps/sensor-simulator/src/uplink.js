@@ -49,12 +49,15 @@ export class SendError extends Error {
   }
 }
 
+// Each buffered item has a `kind`; one batch may mix kinds, so it is split per endpoint.
+const ENDPOINTS = { vital: '/api/vitals', equipment: '/api/equipment', hub_event: '/api/hub-events' };
+
 /** POST a batch to the backend. Throws SendError on network errors and non-2xx responses. */
 export function httpSender({ backendUrl, deviceApiKey, timeoutMs = 5000 }) {
-  return async (readings) => {
+  async function post(path, readings) {
     let res;
     try {
-      res = await fetch(`${backendUrl}/api/vitals`, {
+      res = await fetch(`${backendUrl}${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-device-key': deviceApiKey },
         body: JSON.stringify({ readings }),
@@ -65,6 +68,23 @@ export function httpSender({ backendUrl, deviceApiKey, timeoutMs = 5000 }) {
     }
     if (!res.ok) throw new SendError(`backend responded ${res.status}`, res.status);
     return res.json();
+  }
+
+  return async (batch) => {
+    const total = { created: 0, duplicates: 0, rejected: 0 };
+    const groups = new Map();
+    for (const { kind = 'vital', ...item } of batch) {
+      if (kind === 'hub_event') delete item.source;
+      if (!groups.has(kind)) groups.set(kind, []);
+      groups.get(kind).push(item);
+    }
+    for (const [kind, items] of groups) {
+      const r = await post(ENDPOINTS[kind] || ENDPOINTS.vital, items);
+      total.created += r.created ?? 0;
+      total.duplicates += r.duplicates ?? 0;
+      total.rejected += r.rejected ?? 0;
+    }
+    return total;
   };
 }
 

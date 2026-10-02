@@ -27,7 +27,7 @@ export default function DashboardPage() {
   useEffect(() => {
     load();
   }, [load]);
-  useLiveReload(['vital:new', 'risk:update', 'alert:new', 'alert:updated', 'device:status', 'device:synced', 'caregiver:activity'], load, 600);
+  useLiveReload(['vital:new', 'risk:update', 'alert:new', 'alert:updated', 'device:status', 'device:synced', 'caregiver:activity', 'equipment:status', 'hub:event'], load, 600);
 
   if (!patients) return <p className="text-slate-500">{error || 'Loading…'}</p>;
 

@@ -143,6 +143,15 @@ class PrototypeHybridModel(RiskModel):
             add(f"Cardiac history ({names})", "CONTEXT", 6, "Heart-rate / blood-pressure changes matter more for this patient")
         score += min(ctx, CONTEXT_CAP)
 
+        # ---- D2. medical equipment: an oxygen-dependent patient without oxygen needs attention now
+        oxygen_down = any(e.type == "OXYGEN_CONCENTRATOR" and e.status == "FAULT" for e in req.equipment)
+        if oxygen_down:
+            score += 12
+            add("Home oxygen supply interrupted", "CONTEXT", 12, "Oxygen concentrator is not delivering the prescribed flow")
+            if floor < 40:
+                floor = 40
+                floor_reason = "Oxygen-dependent patient without oxygen supply"
+
         # ---- E. caregiver notes (structured signals only)
         signals = {s.signal for s in req.note_signals if s.signal in NOTE_WEIGHTS}
         note_pts = 0
@@ -180,6 +189,8 @@ class PrototypeHybridModel(RiskModel):
         for p, pts in sorted(abnormal, key=lambda x: -x[1]):
             if not any(t["param"] == p for t in adverse):
                 reasons.append(v.describe_abnormal(p, current[p]))
+        if oxygen_down:
+            reasons.append("Home oxygen concentrator is not delivering oxygen")
         for s in sorted(signals, key=lambda s: -NOTE_WEIGHTS[s]):
             reasons.append(f"Caregiver reports {s.replace('_', ' ')}")
         if len(improving) >= 2 and not adverse:
@@ -192,6 +203,12 @@ class PrototypeHybridModel(RiskModel):
             reasons.append("All vital signs within reference ranges and stable")
 
         explanation = self._explain(level, adverse, abnormal, current, signals, improving, duration)
+        if oxygen_down:
+            if "all vital signs are within reference ranges" in explanation:
+                explanation = (f"{level} RISK because the home oxygen concentrator is not delivering oxygen "
+                               "(vital signs are still within reference ranges).")
+            else:
+                explanation = explanation.rstrip(".") + "; the home oxygen concentrator is not delivering oxygen."
         prediction = self._project(req, readings, score, level)
         confidence = self._confidence(readings, missing, adverse)
 

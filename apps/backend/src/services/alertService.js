@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 import { withTransaction } from '../db/pool.js';
 import { conflict, notFound } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
+import { ALERT_CHANGED, domainEvents } from '../lib/events.js';
 import { emit } from '../lib/socket.js';
 import { alertRepository } from '../repositories/alertRepository.js';
 import { caregiverRepository } from '../repositories/caregiverRepository.js';
@@ -48,7 +49,7 @@ export async function evaluateRiskAlert(client, patient, assessment, previous) {
     });
     await audit(SYSTEM_CTX, 'ALERT_UPDATED', 'alert', active.id,
       { patientId: patient.id, from: active.risk_level, to: level }, client);
-    events.push([SOCKET_EVENTS.ALERT_UPDATED, upgraded]);
+    events.push([SOCKET_EVENTS.ALERT_UPDATED, upgraded, 'upgraded']);
     if (level === 'HIGH') events.push(...await escalateIfCaregiverAbsent(client, patient, upgraded));
     return events;
   }
@@ -68,7 +69,7 @@ export async function evaluateRiskAlert(client, patient, assessment, previous) {
   await audit(SYSTEM_CTX, 'ALERT_CREATED', 'alert', alert.id,
     { patientId: patient.id, level, trigger: trigger.type, score: assessment.risk_score }, client);
   logger.info({ event_type: 'ALERT_CREATED', patient_id: patient.id, alert_id: alert.id, level }, trigger.title);
-  events.push([SOCKET_EVENTS.ALERT_NEW, alert]);
+  events.push([SOCKET_EVENTS.ALERT_NEW, alert, 'created']);
   if (level === 'HIGH') events.push(...await escalateIfCaregiverAbsent(client, patient, alert));
   return events;
 }
@@ -82,24 +83,27 @@ async function escalateIfCaregiverAbsent(client, patient, alert) {
   });
   await alertRepository.insertAction(client, { alertId: alert.id, action: 'ESCALATED', actorLabel: 'system', note: reason });
   await audit(SYSTEM_CTX, 'ALERT_ESCALATED', 'alert', alert.id, { patientId: patient.id, reason }, client);
-  return [[SOCKET_EVENTS.ALERT_UPDATED, escalated]];
+  return [[SOCKET_EVENTS.ALERT_UPDATED, escalated, 'escalated']];
 }
 
+/** After commit: push to dashboards and tell notification channels what changed. */
 export function publish(events) {
-  for (const [event, payload] of events) emit(event, payload);
+  for (const [event, payload, change] of events) {
+    emit(event, payload);
+    if (change && payload?.id) domainEvents.emit(ALERT_CHANGED, { change, alertId: payload.id });
+  }
 }
 
 // ------------------------------------------------------------------ caregiver actions
-async function act(alertId, ctx, fn) {
-  const events = [];
+async function act(alertId, change, fn) {
   await withTransaction(async (client) => {
     const alert = await alertRepository.findByIdForUpdate(client, alertId);
     if (!alert) throw notFound('Alert');
     if (alert.status === 'RESOLVED') throw conflict('Alert is already resolved');
-    await fn(client, alert, events);
+    await fn(client, alert);
   });
   const full = await alertRepository.findById(alertId);
-  emit(SOCKET_EVENTS.ALERT_UPDATED, full);
+  publish([[SOCKET_EVENTS.ALERT_UPDATED, full, change]]);
   return full;
 }
 
@@ -115,7 +119,7 @@ export const alertService = {
   },
 
   acknowledge(alertId, ctx, note) {
-    return act(alertId, ctx, async (client, alert) => {
+    return act(alertId, 'acknowledged', async (client, alert) => {
       if (alert.status === 'ACKNOWLEDGED') throw conflict('Alert is already acknowledged');
       await alertRepository.update(client, alertId, {
         status: 'ACKNOWLEDGED', acknowledged_at: new Date(), acknowledged_by: ctx.actorUserId,
@@ -128,7 +132,7 @@ export const alertService = {
 
   /** Record what the caregiver did. Responding to an unacknowledged alert also acknowledges it. */
   respond(alertId, ctx, note) {
-    return act(alertId, ctx, async (client, alert) => {
+    return act(alertId, 'response', async (client, alert) => {
       if (alert.status === 'OPEN' || alert.status === 'ESCALATED') {
         await alertRepository.update(client, alertId, {
           status: 'ACKNOWLEDGED', acknowledged_at: new Date(), acknowledged_by: ctx.actorUserId,
@@ -142,7 +146,7 @@ export const alertService = {
   },
 
   resolve(alertId, ctx, note) {
-    return act(alertId, ctx, async (client, alert) => {
+    return act(alertId, 'resolved', async (client, alert) => {
       await alertRepository.update(client, alertId, {
         status: 'RESOLVED', resolved_at: new Date(), resolved_by: ctx.actorUserId,
       });
@@ -152,7 +156,7 @@ export const alertService = {
   },
 
   escalate(alertId, ctx, note) {
-    return act(alertId, ctx, async (client, alert) => {
+    return act(alertId, 'escalated', async (client, alert) => {
       const reason = note || 'Escalated manually by caregiver';
       await alertRepository.update(client, alertId, {
         status: 'ESCALATED', escalation_level: alert.escalation_level + 1, escalated_at: new Date(),
@@ -179,7 +183,7 @@ export const alertService = {
         await audit(SYSTEM_CTX, 'ALERT_ESCALATED', 'alert', alert.id, { patientId: alert.patient_id, reason }, client);
       });
       logger.warn({ event_type: 'ALERT_ESCALATED', alert_id: alert.id, patient_id: alert.patient_id }, reason);
-      emit(SOCKET_EVENTS.ALERT_UPDATED, await alertRepository.findById(alert.id));
+      publish([[SOCKET_EVENTS.ALERT_UPDATED, await alertRepository.findById(alert.id), 'escalated']]);
     }
     return overdue.length;
   },
@@ -201,8 +205,30 @@ export const alertService = {
     return alert;
   },
 
-  async autoResolveDevice(client, patientId, note) {
-    const existing = await alertRepository.findActiveForUpdate(client, patientId, 'DEVICE');
+  /** Oxygen-dependent patient without oxygen: HIGH priority, independent of the vitals-based risk. */
+  async raiseEquipmentFault(client, equipment, reading) {
+    const existing = await alertRepository.findActiveForUpdate(client, equipment.patient_id, 'EQUIPMENT');
+    if (existing) return null;
+    const what = reading.power_source === 'NONE' ? 'stopped (no power)' : `delivering only ${reading.flow_lpm} L/min`;
+    const alert = await alertRepository.insert(client, {
+      patientId: equipment.patient_id, category: 'EQUIPMENT', triggerType: 'EQUIPMENT_FAULT', riskLevel: 'HIGH',
+      title: 'Oxygen concentrator not delivering oxygen',
+      description: `${equipment.equipment_uid} has ${what}; prescribed ${equipment.prescribed_flow_lpm} L/min. ` +
+        'Check the power and tubing, and switch to the backup oxygen cylinder as per the care plan.',
+      reasons: [`Flow ${reading.flow_lpm} L/min (prescribed ${equipment.prescribed_flow_lpm})`, `Power: ${reading.power_source}`],
+    });
+    await alertRepository.insertAction(client, { alertId: alert.id, action: 'CREATED', actorLabel: 'system', note: alert.title });
+    await audit(SYSTEM_CTX, 'ALERT_CREATED', 'alert', alert.id, { patientId: equipment.patient_id, trigger: 'EQUIPMENT_FAULT' }, client);
+    return alert;
+  },
+
+  autoResolveDevice(client, patientId, note) {
+    return this.autoResolve(client, patientId, 'DEVICE', note);
+  },
+
+  /** Technical alerts (device / equipment) close themselves when the problem goes away. */
+  async autoResolve(client, patientId, category, note) {
+    const existing = await alertRepository.findActiveForUpdate(client, patientId, category);
     if (!existing) return null;
     const resolved = await alertRepository.update(client, existing.id, { status: 'RESOLVED', resolved_at: new Date() });
     await alertRepository.insertAction(client, { alertId: existing.id, action: 'AUTO_RESOLVED', actorLabel: 'system', note });

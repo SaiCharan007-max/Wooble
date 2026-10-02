@@ -9,7 +9,7 @@ import { formatZod } from '../middleware/validate.js';
 import { deviceRepository } from '../repositories/deviceRepository.js';
 import { vitalRepository } from '../repositories/vitalRepository.js';
 import { vitalReadingSchema } from '../validators/schemas.js';
-import { alertService } from './alertService.js';
+import { alertService, publish } from './alertService.js';
 import { audit } from './auditService.js';
 
 async function ingestOne(raw, deviceCache) {
@@ -76,7 +76,7 @@ export async function ingest(body, ctx) {
     if (reconnected) {
       await withTransaction((client) =>
         alertService.autoResolveDevice(client, device.patient_id, 'Device back online - buffered readings synchronised'))
-        .then((alert) => alert && emit(SOCKET_EVENTS.ALERT_UPDATED, alert));
+        .then((alert) => alert && publish([[SOCKET_EVENTS.ALERT_UPDATED, alert, 'resolved']]));
       emit(SOCKET_EVENTS.DEVICE_STATUS, { patientId: device.patient_id, deviceUid: device.device_uid, status: 'ONLINE' });
       logger.info({ event_type: 'SENSOR_ONLINE', patient_id: device.patient_id, device: device.device_uid });
     }

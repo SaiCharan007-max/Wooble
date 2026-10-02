@@ -5,7 +5,7 @@ import { withTransaction } from '../db/pool.js';
 import { logger } from '../lib/logger.js';
 import { emit } from '../lib/socket.js';
 import { deviceRepository } from '../repositories/deviceRepository.js';
-import { alertService } from './alertService.js';
+import { alertService, publish } from './alertService.js';
 import { audit, SYSTEM_CTX } from './auditService.js';
 
 /** Missing data is treated as a DEVICE problem - it never changes the patient's risk score. */
@@ -25,7 +25,7 @@ export async function detectOfflineSensors() {
     logger.warn({ event_type: 'SENSOR_OFFLINE', patient_id: device.patient_id, device: device.device_uid },
       'Sensor connectivity issue detected');
     emit(SOCKET_EVENTS.DEVICE_STATUS, { patientId: device.patient_id, deviceUid: device.device_uid, status: 'OFFLINE' });
-    if (alert) emit(SOCKET_EVENTS.ALERT_NEW, alert);
+    if (alert) publish([[SOCKET_EVENTS.ALERT_NEW, alert, 'created']]);
   }
   return stale.length;
 }

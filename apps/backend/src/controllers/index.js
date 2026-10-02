@@ -4,6 +4,7 @@ import { alertService } from '../services/alertService.js';
 import { listAudit } from '../services/auditService.js';
 import { authService } from '../services/authService.js';
 import { caregiverService } from '../services/caregiverService.js';
+import { equipmentService } from '../services/equipmentService.js';
 import { noteService } from '../services/noteService.js';
 import { patientService } from '../services/patientService.js';
 import { riskService } from '../services/riskService.js';
@@ -37,6 +38,11 @@ export const vitalController = {
     const result = await vitalService.ingest(req.body, ctx(req));
     res.status(result.status === 'created' ? 201 : 200).json(result);
   }),
+};
+
+export const equipmentController = {
+  ingest: wrap(async (req, res) => res.json(await equipmentService.ingest(req.body, ctx(req)))),
+  hubEvents: wrap(async (req, res) => res.json(await equipmentService.ingestHubEvents(req.body, ctx(req)))),
 };
 
 export const alertController = {

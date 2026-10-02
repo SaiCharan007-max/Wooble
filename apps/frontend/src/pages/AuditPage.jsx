@@ -7,6 +7,8 @@ const TONE = {
   ALERT_CREATED: 'text-red-700', ALERT_ESCALATED: 'text-purple-700', ALERT_ACKNOWLEDGED: 'text-sky-700',
   CAREGIVER_RESPONSE: 'text-sky-700', ALERT_RESOLVED: 'text-emerald-700', SENSOR_OFFLINE: 'text-amber-700',
   BUFFERED_READINGS_SYNCED: 'text-emerald-700', LOGIN_FAILED: 'text-red-700',
+  EQUIPMENT_FAULT: 'text-red-700', EQUIPMENT_OK: 'text-emerald-700', EQUIPMENT_ON_BATTERY: 'text-amber-700',
+  HUB_LOCAL_ALARM: 'text-red-700', HUB_LOCAL_ALARM_ACK: 'text-sky-700', NOTIFICATION_SENT: 'text-sky-700',
 };
 
 function summary(meta) {
@@ -25,7 +27,7 @@ export default function AuditPage() {
   useEffect(() => {
     load().catch(() => {});
   }, [load]);
-  useLiveReload(['alert:new', 'alert:updated', 'device:status', 'device:synced', 'note:new', 'caregiver:activity'], load, 800);
+  useLiveReload(['alert:new', 'alert:updated', 'device:status', 'device:synced', 'note:new', 'caregiver:activity', 'equipment:status', 'hub:event'], load, 800);
 
   return (
     <div>

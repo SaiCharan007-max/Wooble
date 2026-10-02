@@ -6,11 +6,13 @@ import { logger } from './lib/logger.js';
 import { enqueue, queueMode, startQueue, stopQueue } from './lib/queue.js';
 import { closeRedis } from './lib/redis.js';
 import { closeSocket, initSocket } from './lib/socket.js';
+import { notificationService } from './services/notificationService.js';
 
 const app = createApp();
 const server = http.createServer(app);
 initSocket(server);
 await startQueue();
+notificationService.start();
 
 // Watchdog tick: a BullMQ job when Redis is up (one job per interval via jobId), inline otherwise.
 const watchdog = setInterval(() => {
@@ -26,6 +28,8 @@ server.listen(env.port, () => {
 async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
   clearInterval(watchdog);
+  notificationService.stop();
+  await notificationService.flush();
   server.close();
   await closeSocket();
   await stopQueue();

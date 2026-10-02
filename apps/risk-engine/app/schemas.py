@@ -46,11 +46,17 @@ class HistoryPoint(CamelModel):
     risk_score: int = Field(ge=0, le=100)
 
 
+class EquipmentState(CamelModel):
+    type: str
+    status: str
+
+
 class AssessRequest(CamelModel):
     patient: PatientContext
     readings: list[Reading] = Field(min_length=1, max_length=500)
     note_signals: list[NoteSignal] = []
     history: list[HistoryPoint] = []
+    equipment: list[EquipmentState] = []
 
 
 class Factor(CamelModel):

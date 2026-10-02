@@ -7,6 +7,16 @@
 
 ---
 
+## Highlights
+| | |
+|---|---|
+| 📈 **Warns early** | On a gradual deterioration, HomeWard's first warning comes at **~23%** of the path; a conventional threshold alarm fires at **~90%** (100 seeded runs, [docs/evaluation.md](docs/evaluation.md)) |
+| 🔕 **No crying wolf** | **0%** false alerts on stable patients, even with double sensor noise |
+| 📱 **Real phone alerts** | Telegram message with **Acknowledge / Escalate** buttons; tapping them updates the platform and the audit log |
+| 🫁 **Equipment monitoring** | Home oxygen concentrator flow and power are monitored like a vital sign; failure → alert + higher clinical risk |
+| 🏠 **Works offline** | The home hub keeps recording **and sounds a local alarm** when the internet or power is down; everything syncs later, with no duplicates |
+| 🔍 **Explainable & safe** | Every risk comes with a plain-English reason; notes can only add structured signals; critical values always mean HIGH |
+
 ## 1. Problem
 In hospital, monitors, nurses and alarms watch every patient. At home there is usually a family member, a thermometer, and a lot of "are you feeling okay?". Deterioration is noticed late, often only once it is an emergency.
 
@@ -41,6 +51,10 @@ Full diagrams (Mermaid), data flow, failure handling and alert lifecycle are in 
 - **Attendance**: check in, check out, mark visit; PRESENT / NOT CHECKED IN status with last activity and last visit. HIGH risk with an absent caregiver escalates immediately.
 - **Offline mode**: local buffer, exponential backoff, ordered batch sync, idempotent ingestion, "DEVICE OFFLINE — BUFFERING DATA" banner and recovery message.
 - **Sensor failure detection**: silence is reported as a connectivity issue, never as deterioration.
+- **Medical equipment**: a home oxygen concentrator (flow L/min, mains/battery/none). Flow below 50% of the prescription → HIGH equipment alert, the patient's risk rises ("home oxygen supply interrupted"), and the alert auto-resolves when the flow returns. A power cut switches it to battery with no false alarm.
+- **Home hub local alarm** (edge safety net): the hub checks every reading itself and raises a loud on-screen and audible alarm for critical vitals or an oxygen failure, **even with no internet**. The caregiver silences it at home, and the alarm and silence events sync to the platform's audit log later.
+- **Phone alerts (Telegram)**: new, upgraded and escalated alerts are sent to the caregiver's phone with Acknowledge / Escalate / Resolve buttons. Escalations can also go to a second chat (family / nurse). The message updates in place as the alert changes.
+- **Evaluation harness** (`npm run evaluate`): measures lead time against a threshold alarm, false-alarm rate, and time to detect sudden events and recovery.
 - **Audit log** covering logins, ingestion, risk calculations, alerts, responses, escalations, config changes and buffer syncs.
 - **Demo mode**: scenario, network and speed controls plus a self-ticking 10-step demo checklist.
 
@@ -70,6 +84,8 @@ Full diagrams (Mermaid), data flow, failure handling and alert lifecycle are in 
 | `risk_assessments` | Level, score, confidence, explanation, reasons, factors, prediction |
 | `alerts` | Status OPEN/ACKNOWLEDGED/RESOLVED/ESCALATED; partial unique index = one active alert per patient + category |
 | `alert_actions` | Every acknowledgement, response, escalation, resolution |
+| `medical_equipment` / `equipment_readings` | Oxygen concentrator status, flow and power; idempotent on (equipment, sequence) |
+| `notifications` | Every phone alert sent (channel, status, message id) |
 | `caregiver_attendance` | CHECK_IN / CHECK_OUT / VISIT / ACTIVITY |
 | `audit_logs` | timestamp, actor, action, entity, metadata, request id |
 
@@ -81,6 +97,8 @@ All endpoints are under `/api`. User endpoints need `Authorization: Bearer <JWT>
 | POST | `/auth/login` | `{email, password}` → `{token, user}` |
 | GET | `/auth/me` | Current user |
 | POST | `/vitals` | **Device key.** One reading, or `{readings:[...]}` (≤500). Idempotent on `(device_id, sequence_number)`. Returns created / duplicate / rejected per reading |
+| POST | `/equipment` | **Device key.** Equipment readings `{readings:[{equipment_id, patient_id, timestamp, flow_lpm, power_source, sequence_number}]}` |
+| POST | `/hub-events` | **Device key.** Local alarms raised / silenced / cleared at the home hub (idempotent on `event_uid`) |
 | GET | `/patients` | Overview: latest vitals, latest risk, device, active alerts |
 | GET | `/patients/:id` | Detail incl. conditions, notes, alerts, caregiver activity |
 | GET | `/patients/:id/vitals?minutes=30` | Readings in a time window |
@@ -161,7 +179,7 @@ Or individually:
 |---|---|---|
 | Risk engine | `npm run dev:risk` | http://localhost:8000 |
 | Backend | `npm run dev:backend` | http://localhost:4000 |
-| Sensor simulator | `npm run dev:simulator` | http://localhost:4100 (control page) |
+| Sensor simulator | `npm run dev:simulator` | http://localhost:4100 (**home hub screen** + controls) |
 | Dashboard | `npm run dev:frontend` | **http://localhost:5173** |
 
 **Redis (optional).** Set `REDIS_URL=redis://localhost:6379` to process jobs with BullMQ. Without it, jobs run inline and nothing else changes.
@@ -170,7 +188,18 @@ Or individually:
 ```bash
 npm test
 ```
-This runs 12 risk-engine tests (pytest), 8 simulator tests and 17 backend integration tests. The backend tests need `npm run db:start` running and use the `homecare_test` database.
+This runs 13 risk-engine tests (pytest), 11 simulator tests and 22 backend integration tests (46 in total). The Telegram flow is tested end to end against a mock Telegram API.
+
+**Evaluation** (writes `docs/evaluation.md`):
+```bash
+npm run evaluate
+```
+
+### Phone alerts (Telegram, optional, about 3 minutes)
+1. In Telegram, open **@BotFather** → `/newbot` → copy the token into `.env` as `TELEGRAM_BOT_TOKEN`.
+2. Restart the backend and send `/start` to your bot. It replies with your chat id → put it in `TELEGRAM_CHAT_ID` and restart again.
+3. Alerts now arrive on your phone. Tap **✅ Acknowledge** and the dashboard updates live. Send `/status` for a quick overview of all patients.
+No public URL is needed: the backend long-polls Telegram for button taps. The backend tests need `npm run db:start` running and use the `homecare_test` database.
 
 ## 12. Demo instructions (≈ 3 minutes)
 **Demo credentials:**
@@ -190,6 +219,7 @@ Sign in as Anita. Use the **Demo mode** panel at the top of the dashboard (patie
 5. **⚡ Power / connectivity failure**: cards show *DEVICE OFFLINE — BUFFERING DATA* and the panel counts buffered readings.
 6. **Restore connection**: buffered readings sync with no duplicates (orange dots on the charts).
 7. **Recovery**: vitals improve and risk falls. **Resolve** the alert.
+7b. *(Optional)* Select **Lakshmi Devi** → **🫁 O₂ concentrator failure** together with **⚡ Power / connectivity failure**, and open **🏠 Home hub screen**: the home raises its own alarm with no internet. Silence it, restore the connection, and the equipment alert, the clinical alert and the offline alarm all appear on the platform.
 8. Open **Audit log** to show every step.
 
 The checklist on the right of the demo panel ticks itself off as each step happens. Admin can **Reset demo** at any time.
@@ -215,6 +245,11 @@ The checklist on the right of the demo panel ticks itself off as each step happe
 | `BACKEND_URL` | http://localhost:4000 | simulator | Where readings are sent |
 | `SIMULATOR_TICK_MS` | 2000 | simulator | Reading interval |
 | `RISK_MODEL` | prototype-hybrid-v1 | risk engine | Model implementation |
+| `TELEGRAM_BOT_TOKEN` | *(empty)* | backend | Enables phone alerts |
+| `TELEGRAM_CHAT_ID` | *(empty)* | backend | Caregiver chat (get it with `/start`) |
+| `TELEGRAM_ESCALATION_CHAT_ID` | *(empty)* | backend | Extra chat for escalations |
+| `TELEGRAM_USER_EMAIL` | anita@homecare.demo | backend | Account used for Telegram acknowledgements |
+| `DASHBOARD_URL` | http://localhost:5173 | backend | Link included in phone alerts |
 | `LOCAL_PG_PORT` | 5433 | db:start | Local PostgreSQL port |
 
 ## 14. Project structure

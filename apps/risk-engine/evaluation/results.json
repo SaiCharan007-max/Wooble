@@ -1,0 +1,41 @@
+{
+  "runs_per_scenario": 100,
+  "tick_seconds": 2,
+  "deterioration_steps": 75,
+  "gradual": {
+    "detected_runs_pct": 100.0,
+    "first_warning_pct_of_path": 22.8,
+    "first_high_pct_of_path": 43.1,
+    "threshold_alarm_pct_of_path": 90.4,
+    "values_only_warning_pct_of_path": 36.5,
+    "lead_vs_threshold_readings_mean": 50.7,
+    "lead_vs_values_only_readings_mean": 10.3,
+    "warned_before_threshold_alarm_pct": 100.0
+  },
+  "stable": {
+    "runs_with_any_alert_pct": 0.0,
+    "runs_with_high_pct": 0.0,
+    "readings_not_low_pct": 0.0,
+    "threshold_alarm_runs_pct": 0.0
+  },
+  "stable_double_noise": {
+    "runs_with_any_alert_pct": 0.0,
+    "runs_with_high_pct": 0.0,
+    "readings_not_low_pct": 0.0
+  },
+  "sudden": {
+    "detected_runs_pct": 100.0,
+    "readings_to_high_mean": 2.0,
+    "readings_to_high_max": 2
+  },
+  "recovery": {
+    "returned_low_pct": 100.0,
+    "readings_to_low_mean": 18.1,
+    "recovery_steps": 45
+  },
+  "context": {
+    "plain_first_warning": 16.9,
+    "with_breathing_note_first_warning": 15.2,
+    "copd_age_80_first_warning": 15.3
+  }
+}

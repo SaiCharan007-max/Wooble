@@ -5,6 +5,8 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useLive } from '../lib/live.js';
 
+const HUB_URL = import.meta.env.VITE_HUB_URL || 'http://localhost:4100';
+
 const SCENARIO_BUTTONS = [
   ['NORMAL', 'Normal'],
   ['GRADUAL_DETERIORATION', 'Deterioration'],
@@ -129,6 +131,18 @@ export default function DemoPanel({ patients, alerts }) {
               ))}
             </div>
 
+            {device?.equipment && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="label w-20">Equipment</span>
+                {device.equipment.failed
+                  ? <button className="btn btn-primary" onClick={() => control({ patientId: target, equipment: 'OK' })}>Fix O₂ concentrator</button>
+                  : <button className="btn" onClick={() => control({ patientId: target, equipment: 'FAILURE' })}>🫁 O₂ concentrator failure</button>}
+                <span className="text-sm text-slate-600">
+                  {device.equipment.lastReading ? `${device.equipment.lastReading.flow_lpm} L/min · ${device.equipment.lastReading.power_source.toLowerCase()}` : ''}
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-2">
               <span className="label w-20">Network</span>
               {offline
@@ -146,8 +160,14 @@ export default function DemoPanel({ patients, alerts }) {
               {[1, 5, 10].map((s) => (
                 <button key={s} className={`btn ${sim?.speed === s ? 'btn-primary' : ''}`} onClick={() => control({ speed: s })}>{s}x</button>
               ))}
-              {user.role === 'ADMIN' && <button className="btn ml-auto" onClick={reset}>↺ Reset demo</button>}
+              <a className="btn ml-auto" href={HUB_URL} target="_blank" rel="noreferrer">🏠 Open home hub screen</a>
+              {user.role === 'ADMIN' && <button className="btn" onClick={reset}>↺ Reset demo</button>}
             </div>
+            {sim?.alarms?.length > 0 && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">
+                🚨 Home hub local alarm: {sim.alarms.map((a) => `${a.name} (${a.findings.join(', ')})${a.acknowledged ? ' - silenced' : ''}`).join(' · ')}
+              </p>
+            )}
             {simError && <p className="text-sm text-red-700">{simError}</p>}
           </div>
 

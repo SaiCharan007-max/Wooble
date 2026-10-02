@@ -37,6 +37,27 @@ export const vitalReadingSchema = z
     message: 'Systolic BP must be greater than diastolic BP', path: ['diastolic_bp'],
   });
 
+export const equipmentReadingSchema = z.object({
+  equipment_id: z.string().trim().min(1).max(64),
+  patient_id: z.string().uuid(),
+  timestamp: z.string().datetime({ offset: true }),
+  flow_lpm: z.number().min(0).max(15),
+  power_source: z.enum(['MAINS', 'BATTERY', 'NONE']),
+  source: z.enum(['LIVE', 'BUFFERED']).default('LIVE'),
+  sequence_number: z.number().int().nonnegative(),
+}).strict().refine((r) => new Date(r.timestamp).getTime() <= Date.now() + FUTURE_TOLERANCE_MS, {
+  message: 'Timestamp is in the future', path: ['timestamp'],
+});
+
+export const hubEventSchema = z.object({
+  event_uid: z.string().trim().min(1).max(128),
+  device_id: z.string().trim().min(1).max(64),
+  patient_id: z.string().uuid(),
+  type: z.enum(['LOCAL_ALARM', 'LOCAL_ALARM_ACK', 'LOCAL_ALARM_CLEARED']),
+  timestamp: z.string().datetime({ offset: true }),
+  details: z.record(z.any()).default({}),
+}).strict();
+
 export const vitalBatchSchema = z.object({ readings: z.array(z.unknown()).min(1).max(500) });
 
 export const loginSchema = z.object({
@@ -67,7 +88,8 @@ export const scenarioSchema = z.object({
   scenario: z.enum(SCENARIOS).optional(),
   speed: z.union(SPEEDS.map((s) => z.literal(s))).optional(),
   network: z.enum(['ONLINE', 'OFFLINE']).optional(),
-}).refine((b) => b.scenario || b.speed || b.network, { message: 'Provide scenario, speed or network' });
+  equipment: z.enum(['FAILURE', 'OK']).optional(),
+}).refine((b) => b.scenario || b.speed || b.network || b.equipment, { message: 'Provide scenario, speed, network or equipment' });
 
 export const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(100),

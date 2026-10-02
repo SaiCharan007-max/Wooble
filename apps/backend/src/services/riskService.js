@@ -5,6 +5,7 @@ import { withTransaction } from '../db/pool.js';
 import { notFound } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { emit } from '../lib/socket.js';
+import { equipmentRepository } from '../repositories/equipmentRepository.js';
 import { noteRepository } from '../repositories/noteRepository.js';
 import { patientRepository } from '../repositories/patientRepository.js';
 import { riskRepository } from '../repositories/riskRepository.js';
@@ -27,10 +28,11 @@ export async function assessPatient(patientId, { requestId } = {}) {
   const readings = await vitalRepository.latest(patientId, 30);
   if (!readings.length) return null;
 
-  const [signals, history, previous] = await Promise.all([
+  const [signals, history, previous, equipment] = await Promise.all([
     noteRepository.recentSignals(patientId, env.noteWindowMinutes),
     riskRepository.history(patientId, 40),
     riskRepository.latest(patientId),
+    equipmentRepository.statusForPatient(patientId),
   ]);
 
   let result;
@@ -40,6 +42,7 @@ export async function assessPatient(patientId, { requestId } = {}) {
       readings: readings.map(toEngineReading),
       noteSignals: signals.map((s) => ({ signal: s.signal, timestamp: new Date(s.timestamp).toISOString() })),
       history: history.map((h) => ({ timestamp: new Date(h.created_at).toISOString(), riskScore: h.risk_score })),
+      equipment: equipment.map((e) => ({ type: e.type, status: e.status })),
     }, requestId);
   } catch (err) {
     logger.warn({ event_type: 'RISK_ENGINE_UNAVAILABLE', patient_id: patientId, err: err.message },

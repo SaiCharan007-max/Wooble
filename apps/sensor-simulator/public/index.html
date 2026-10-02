@@ -3,42 +3,123 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sensor Simulator Controls</title>
+  <title>Home Hub</title>
   <style>
-    body { font: 15px system-ui, sans-serif; margin: 24px; color: #1e293b; background: #f8fafc; }
-    h1 { font-size: 20px; } table { border-collapse: collapse; margin: 12px 0; }
-    td, th { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-    button { margin: 2px; padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer; }
-    .bar { margin: 10px 0; } .pill { padding: 2px 8px; border-radius: 99px; background: #e2e8f0; }
+    :root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #020617; flex-wrap: wrap; gap: 8px; }
+    h1 { margin: 0; font-size: 22px; } .muted { color: var(--muted); font-size: 14px; }
+    .pill { padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; }
+    .ok { background: #14532d; color: #bbf7d0; } .off { background: #78350f; color: #fde68a; }
+    main { padding: 20px 24px; max-width: 1100px; margin: 0 auto; }
+    .alarm { background: var(--bad); color: #fff; border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .alarm.silenced { background: #7f1d1d; }
+    .alarm b { font-size: 22px; display: block; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+    .card { background: var(--card); border-radius: 14px; padding: 16px; }
+    .vit { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; text-align: center; }
+    .vit div { background: #0f172a; border-radius: 8px; padding: 6px 2px; } .vit span { display: block; font-size: 12px; color: var(--muted); }
+    .vit strong { font-size: 22px; } .crit { color: #fca5a5; }
+    .eq { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: #0f172a; font-size: 14px; }
+    button { font: inherit; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; font-weight: 600; }
+    .btn-white { background: #fff; color: #991b1b; } .btn { background: #334155; color: var(--text); margin: 3px; padding: 6px 10px; font-size: 13px; }
+    details { margin-top: 24px; } summary { cursor: pointer; color: var(--muted); }
   </style>
   <script src="/token.js"></script>
 </head>
 <body>
-  <h1>Sensor Simulator - demo controls</h1>
-  <p>Prototype tool. The main dashboard has the same controls.</p>
-  <div class="bar">Network: <span id="net" class="pill"></span> · Buffered readings: <b id="buf"></b> ·
-    <button onclick="send({network:'OFFLINE'})">Simulate power/connectivity failure</button>
-    <button onclick="send({network:'ONLINE'})">Restore connection</button></div>
-  <div class="bar">Speed: <button onclick="send({speed:1})">1x</button><button onclick="send({speed:5})">5x</button>
-    <button onclick="send({speed:10})">10x</button> <button onclick="post('/reset',{})">Reset demo</button></div>
-  <table><thead><tr><th>Device</th><th>Patient</th><th>Scenario</th><th>Last reading</th><th>Set scenario</th></tr></thead>
-    <tbody id="rows"></tbody></table>
+<header>
+  <div><h1>🏠 Home Hub</h1><div class="muted">Sensors in this home · works even without internet</div></div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span id="net" class="pill ok">Cloud connected</span>
+    <button id="sound" class="btn">🔈 Enable alarm sound</button>
+  </div>
+</header>
+<main>
+  <div id="alarms"></div>
+  <div id="patients" class="grid"></div>
+  <details>
+    <summary>Demo controls (prototype only)</summary>
+    <p>
+      <button class="btn" onclick="send({network:'OFFLINE'})">⚡ Power / connectivity failure</button>
+      <button class="btn" onclick="send({network:'ONLINE'})">Restore connection</button>
+      Speed: <button class="btn" onclick="send({speed:1})">1x</button><button class="btn" onclick="send({speed:5})">5x</button><button class="btn" onclick="send({speed:10})">10x</button>
+      <button class="btn" onclick="post('/reset',{})">Reset demo</button>
+    </p>
+    <div id="controls"></div>
+  </details>
+</main>
 <script>
-  const SC = ['NORMAL','GRADUAL_DETERIORATION','SUDDEN_DETERIORATION','RECOVERY','SENSOR_FAILURE'];
-  const post = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-control-token': window.CONTROL_TOKEN }, body: JSON.stringify(body) }).then(refresh);
+  const SC = ['NORMAL', 'GRADUAL_DETERIORATION', 'SUDDEN_DETERIORATION', 'RECOVERY', 'SENSOR_FAILURE'];
+  const CRIT = { spo2: v => v <= 88, respiratory_rate: v => v >= 30 || v <= 8, heart_rate: v => v >= 131 || v <= 40, temperature: v => v >= 39.5 || v <= 35 };
+  const H = { 'content-type': 'application/json', 'x-control-token': window.CONTROL_TOKEN };
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const post = (url, body) => fetch(url, { method: 'POST', headers: H, body: JSON.stringify(body) }).then(refresh);
   const send = (body) => post('/control', body);
-  async function refresh() {
-    const s = await fetch('/status', { headers: { 'x-control-token': window.CONTROL_TOKEN } }).then(r => r.json());
-    document.getElementById('net').textContent = s.uplink.mode;
-    document.getElementById('buf').textContent = s.uplink.buffered;
-    document.getElementById('rows').innerHTML = s.devices.map(d => {
-      const r = d.lastReading;
-      const txt = r ? `HR ${r.heart_rate} · SpO2 ${r.spo2}% · RR ${r.respiratory_rate} · ${r.temperature}°C` : '-';
-      return `<tr><td>${d.deviceUid}</td><td>${d.name}</td><td>${d.scenario}</td><td>${txt}</td><td>` +
-        SC.map(x => `<button onclick="send({patientId:'${d.patientId}',scenario:'${x}'})">${x.replace('_',' ').toLowerCase()}</button>`).join('') + '</td></tr>';
-    }).join('');
+
+  // ---- alarm sound (browsers only allow audio after a click)
+  let audio = null, soundOn = false, beeping = null;
+  document.getElementById('sound').onclick = (e) => {
+    soundOn = !soundOn;
+    if (soundOn && !audio) audio = new AudioContext();
+    e.target.textContent = soundOn ? '🔊 Alarm sound on' : '🔈 Enable alarm sound';
+  };
+  function beep() {
+    if (!audio) return;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
+    g.gain.setValueAtTime(0.2, audio.currentTime); o.start(); o.stop(audio.currentTime + 0.25);
   }
-  refresh(); setInterval(refresh, 2000);
+  function setBeeping(on) {
+    if (on && soundOn && !beeping) beeping = setInterval(beep, 700);
+    if ((!on || !soundOn) && beeping) { clearInterval(beeping); beeping = null; }
+  }
+
+  let lastAlarmSig = '';
+  // one delegated handler, so a tap is never lost when the screen refreshes
+  document.getElementById('alarms').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ack]');
+    if (b) post(`/alarms/${b.dataset.ack}/ack`, {});
+  });
+
+  async function refresh() {
+    let s;
+    try { s = await fetch('/status', { headers: H }).then(r => r.json()); } catch { return; }
+    const offline = s.uplink.mode !== 'ONLINE';
+    const net = document.getElementById('net');
+    net.className = 'pill ' + (offline ? 'off' : 'ok');
+    net.textContent = offline ? `Cloud unreachable · ${s.uplink.buffered} readings stored locally` : 'Cloud connected';
+
+    const sig = JSON.stringify(s.alarms.map(a => [a.id, a.acknowledged]));
+    if (sig !== lastAlarmSig) { lastAlarmSig = sig; document.getElementById('alarms').innerHTML = s.alarms.map(a => `
+      <div class="alarm ${a.acknowledged ? 'silenced' : ''}">
+        <div><b>🚨 ${esc(a.name)} needs attention</b><span data-findings="${a.id}">${esc(a.findings.join(' · '))}</span>
+          <div style="font-size:13px;opacity:.9">Local alarm since ${new Date(a.raisedAt).toLocaleTimeString()}${a.cloudReachable ? '' : ' · raised while the cloud was unreachable'}${a.acknowledged ? ' · silenced' : ''}</div></div>
+        ${a.acknowledged ? '' : `<button class="btn-white" data-ack="${a.patientId}">I'm with the patient — silence</button>`}
+      </div>`).join(''); }
+    for (const a of s.alarms) {  // live values change every second: update the text only
+      const el = document.querySelector(`[data-findings="${a.id}"]`);
+      if (el) el.textContent = a.findings.join(' · ');
+    }
+    setBeeping(s.alarms.some(a => !a.acknowledged));
+
+    document.getElementById('patients').innerHTML = s.devices.map(d => {
+      const r = d.lastReading;
+      const cell = (k, label, unit) => `<div><span>${label}</span><strong class="${r && CRIT[k] && CRIT[k](r[k]) ? 'crit' : ''}">${r ? r[k] : '–'}</strong><span>${unit}</span></div>`;
+      const eq = d.equipment;
+      const eqLine = eq ? `<div class="eq">🫁 Oxygen concentrator: ${eq.lastReading ? (eq.lastReading.power_source === 'NONE'
+        ? '<b class="crit">STOPPED · 0 L/min</b>' : `${eq.lastReading.flow_lpm} L/min · ${eq.lastReading.power_source === 'BATTERY' ? '🔋 on battery' : 'mains power'}`) : '–'}</div>` : '';
+      return `<div class="card"><div style="display:flex;justify-content:space-between"><b>${esc(d.name)}</b>
+        <span class="muted">${d.sensorWorking ? d.deviceUid : '⚠ sensor not reporting'}</span></div>
+        <div class="vit">${cell('heart_rate', 'Heart', 'bpm')}${cell('spo2', 'SpO₂', '%')}${cell('respiratory_rate', 'Breath', '/min')}${cell('temperature', 'Temp', '°C')}</div>${eqLine}</div>`;
+    }).join('');
+
+    document.getElementById('controls').innerHTML = s.devices.map(d => `<p><b>${esc(d.name)}</b> (${d.scenario}): ` +
+      SC.map(x => `<button class="btn" onclick="send({patientId:'${d.patientId}',scenario:'${x}'})">${x.replaceAll('_', ' ').toLowerCase()}</button>`).join('') +
+      (d.equipment ? ` <button class="btn" onclick="send({patientId:'${d.patientId}',equipment:'${d.equipment.failed ? 'OK' : 'FAILURE'}'})">${d.equipment.failed ? 'fix' : 'break'} O₂ concentrator</button>` : '') + '</p>').join('');
+  }
+  refresh(); setInterval(refresh, 1000);
 </script>
 </body>
 </html>

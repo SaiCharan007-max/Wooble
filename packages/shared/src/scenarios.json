@@ -1,0 +1,17 @@
+{
+  "normalVitals": { "heart_rate": 78, "spo2": 97, "respiratory_rate": 16, "temperature": 36.8, "systolic_bp": 122, "diastolic_bp": 78 },
+  "profiles": {
+    "NORMAL": { "target": "normal", "steps": 15 },
+    "GRADUAL_DETERIORATION": {
+      "target": { "heart_rate": 118, "spo2": 88, "respiratory_rate": 29, "temperature": 38.7, "systolic_bp": 98, "diastolic_bp": 62 },
+      "steps": 75
+    },
+    "SUDDEN_DETERIORATION": {
+      "target": { "heart_rate": 134, "spo2": 85, "respiratory_rate": 32, "temperature": 37.6, "systolic_bp": 88, "diastolic_bp": 54 },
+      "steps": 4
+    },
+    "RECOVERY": { "target": "normal", "steps": 45 }
+  },
+  "noise": { "heart_rate": 1.5, "spo2": 0.4, "respiratory_rate": 0.5, "temperature": 0.05, "systolic_bp": 2, "diastolic_bp": 1.5 },
+  "oxygenFailureEffect": { "spo2": -7, "respiratory_rate": 5, "heart_rate": 12, "steps": 20 }
+}

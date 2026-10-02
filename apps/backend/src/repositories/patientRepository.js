@@ -11,6 +11,12 @@ const OVERVIEW = `
          row_to_json(d) AS device,
          row_to_json(v) AS latest_vitals,
          row_to_json(r) AS latest_risk,
+         COALESCE((SELECT json_agg(json_build_object(
+                     'equipment_uid', e.equipment_uid, 'type', e.type, 'status', e.status,
+                     'prescribed_flow_lpm', e.prescribed_flow_lpm, 'last_seen_at', e.last_seen_at,
+                     'flow_lpm', (SELECT flow_lpm FROM equipment_readings er WHERE er.equipment_id = e.id ORDER BY "timestamp" DESC LIMIT 1),
+                     'power_source', (SELECT power_source FROM equipment_readings er WHERE er.equipment_id = e.id ORDER BY "timestamp" DESC LIMIT 1)))
+                   FROM medical_equipment e WHERE e.patient_id = p.id), '[]') AS equipment,
          (SELECT count(*)::int FROM alerts a WHERE a.patient_id = p.id AND a.status <> 'RESOLVED') AS active_alerts
   FROM patients p
   LEFT JOIN caregivers c ON c.id = p.assigned_caregiver_id

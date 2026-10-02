@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  alertController, auditController, authController, caregiverController, patientController,
+  alertController, auditController, authController, caregiverController, equipmentController, patientController,
   simulatorController, vitalController,
 } from '../controllers/index.js';
 import { requireAuth, requireDevice, requireRole } from '../middleware/auth.js';
@@ -20,6 +20,8 @@ r.get('/auth/me', requireAuth, authController.me);
 
 // --- sensor ingestion (device key, not a user login). Single reading or { readings: [...] }.
 r.post('/vitals', requireDevice, vitalController.ingest);
+r.post('/equipment', requireDevice, equipmentController.ingest); // medical equipment readings (O2 concentrator)
+r.post('/hub-events', requireDevice, equipmentController.hubEvents); // local alarms from the home hub
 
 // everything below needs a signed-in user
 r.use(requireAuth);

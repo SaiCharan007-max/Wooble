@@ -53,6 +53,8 @@ export const DEMO_PATIENTS = Object.freeze([
     name: 'Lakshmi Devi',
     defaultScenario: 'GRADUAL_DETERIORATION',
     start: { heart_rate: 86, spo2: 95, respiratory_rate: 19, temperature: 37.3, systolic_bp: 124, diastolic_bp: 78 },
+    // COPD patient on home oxygen: the concentrator is monitored like a vital sign
+    equipment: { equipmentUid: 'O2C-002', type: 'OXYGEN_CONCENTRATOR', prescribedFlow: 2.0 },
   },
   {
     patientId: '33333333-3333-4333-8333-333333333333',
@@ -72,4 +74,30 @@ export const SOCKET_EVENTS = Object.freeze({
   DEVICE_SYNCED: 'device:synced',
   CAREGIVER_ACTIVITY: 'caregiver:activity',
   NOTE_NEW: 'note:new',
+  EQUIPMENT_STATUS: 'equipment:status',
 });
+
+// Values at which a single vital is critical on its own. Used by the backend's safety fallback and by the
+// home hub's local alarm, so both apply exactly the same rule (the risk engine has the same thresholds).
+export const CRITICAL_THRESHOLDS = Object.freeze({
+  spo2: { atMost: 88 },
+  respiratory_rate: { atLeast: 30, atMost: 8 },
+  heart_rate: { atLeast: 131, atMost: 40 },
+  systolic_bp: { atMost: 90 },
+  temperature: { atLeast: 39.5, atMost: 35.0 },
+});
+
+/** List of critical findings in a reading, e.g. ['SpO2 86%']. */
+export function criticalFindings(reading) {
+  const out = [];
+  for (const [key, t] of Object.entries(CRITICAL_THRESHOLDS)) {
+    const v = reading?.[key];
+    if (v == null) continue;
+    if ((t.atLeast != null && v >= t.atLeast) || (t.atMost != null && v <= t.atMost)) {
+      out.push(`${REFERENCE_RANGES[key].label} ${v}${REFERENCE_RANGES[key].unit}`);
+    }
+  }
+  return out;
+}
+
+export const EQUIPMENT_TYPES = Object.freeze({ OXYGEN_CONCENTRATOR: 'Oxygen concentrator' });

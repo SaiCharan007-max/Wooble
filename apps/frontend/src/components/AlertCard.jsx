@@ -40,9 +40,9 @@ export default function AlertCard({ alert, onChange, showPatient = true }) {
   return (
     <div className={`card p-3 ${alert.risk_level === 'HIGH' && active ? 'border-red-400 bg-red-50/40' : ''}`}>
       <div className="flex flex-wrap items-center gap-2">
-        {alert.category === 'DEVICE'
-          ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">DEVICE</span>
-          : <RiskBadge level={alert.risk_level} size="sm" />}
+        {alert.category === 'DEVICE' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">DEVICE</span>}
+        {alert.category === 'EQUIPMENT' && <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">EQUIPMENT</span>}
+        {alert.category === 'CLINICAL' && <RiskBadge level={alert.risk_level} size="sm" />}
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS[alert.status]}`}>{alert.status}</span>
         <span className="ml-auto text-xs text-slate-500" title={clock(alert.created_at)}>{timeAgo(alert.created_at)}</span>
       </div>

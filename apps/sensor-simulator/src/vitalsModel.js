@@ -1,26 +1,19 @@
 // A virtual patient whose "true" physiology moves smoothly toward a scenario target;
-// each reading adds small, realistic sensor noise.
+// each reading adds small, realistic sensor noise. Scenario data is shared with the
+// risk-engine evaluation (packages/shared/src/scenarios.json) so both use identical dynamics.
 import { VITAL_LIMITS } from '@homecare/shared';
+import scenarioData from '../../../packages/shared/src/scenarios.json' with { type: 'json' };
 
-export const NORMAL_VITALS = Object.freeze({
-  heart_rate: 78, spo2: 97, respiratory_rate: 16, temperature: 36.8, systolic_bp: 122, diastolic_bp: 78,
-});
+export const NORMAL_VITALS = Object.freeze({ ...scenarioData.normalVitals });
 
-// steps = number of 1x ticks to reach the target (tick = 2 s by default)
-export const PROFILES = Object.freeze({
-  NORMAL: { target: NORMAL_VITALS, steps: 15 },
-  GRADUAL_DETERIORATION: {
-    target: { heart_rate: 118, spo2: 88, respiratory_rate: 29, temperature: 38.7, systolic_bp: 98, diastolic_bp: 62 },
-    steps: 75,
-  },
-  SUDDEN_DETERIORATION: {
-    target: { heart_rate: 134, spo2: 85, respiratory_rate: 32, temperature: 37.6, systolic_bp: 88, diastolic_bp: 54 },
-    steps: 4,
-  },
-  RECOVERY: { target: NORMAL_VITALS, steps: 45 },
-});
+export const PROFILES = Object.freeze(Object.fromEntries(
+  Object.entries(scenarioData.profiles).map(([name, p]) => [
+    name, { target: p.target === 'normal' ? NORMAL_VITALS : p.target, steps: p.steps },
+  ]),
+));
 
-const NOISE = { heart_rate: 1.5, spo2: 0.4, respiratory_rate: 0.5, temperature: 0.05, systolic_bp: 2, diastolic_bp: 1.5 };
+const NOISE = scenarioData.noise;
+const O2_EFFECT = scenarioData.oxygenFailureEffect;
 
 export class VirtualPatient {
   constructor(start = NORMAL_VITALS, rng = Math.random) {
@@ -33,6 +26,8 @@ export class VirtualPatient {
     this.state = { ...this.start };
     this.target = { ...this.start };
     this.stepsLeft = 0;
+    this.oxygenFailure = false;
+    this.o2Offset = { spo2: 0, respiratory_rate: 0, heart_rate: 0 };
   }
 
   /** Physiological scenarios change the trajectory; SENSOR_FAILURE / NETWORK_FAILURE do not. */
@@ -43,11 +38,24 @@ export class VirtualPatient {
     this.stepsLeft = profile.steps;
   }
 
+  /** Losing home oxygen gradually lowers SpO2 and raises breathing/heart rate (and recovers when restored). */
+  setOxygenFailure(failed) {
+    this.oxygenFailure = failed;
+  }
+
   /** Advance `speed` physiological steps and return one noisy sensor reading. */
   step(speed = 1) {
-    for (let i = 0; i < speed && this.stepsLeft > 0; i += 1) {
-      for (const k of Object.keys(this.state)) this.state[k] += (this.target[k] - this.state[k]) / this.stepsLeft;
-      this.stepsLeft -= 1;
+    for (let i = 0; i < speed; i += 1) {
+      if (this.stepsLeft > 0) {
+        for (const k of Object.keys(this.state)) this.state[k] += (this.target[k] - this.state[k]) / this.stepsLeft;
+        this.stepsLeft -= 1;
+      }
+      for (const k of Object.keys(this.o2Offset)) {
+        const goal = this.oxygenFailure ? O2_EFFECT[k] : 0;
+        const stepSize = Math.abs(O2_EFFECT[k]) / O2_EFFECT.steps;
+        const diff = goal - this.o2Offset[k];
+        this.o2Offset[k] += Math.sign(diff) * Math.min(Math.abs(diff), stepSize);
+      }
     }
     return this.sample();
   }
@@ -62,7 +70,7 @@ export class VirtualPatient {
   sample() {
     const out = {};
     for (const [k, v] of Object.entries(this.state)) {
-      const noisy = v + this.gaussian() * NOISE[k];
+      const noisy = v + (this.o2Offset[k] || 0) + this.gaussian() * NOISE[k];
       const { min, max } = VITAL_LIMITS[k];
       const clamped = Math.min(max, Math.max(min, noisy));
       out[k] = k === 'temperature' ? Math.round(clamped * 10) / 10 : Math.round(clamped);
@@ -70,5 +78,22 @@ export class VirtualPatient {
     out.spo2 = Math.min(100, out.spo2);
     if (out.diastolic_bp >= out.systolic_bp) out.diastolic_bp = out.systolic_bp - 10;
     return out;
+  }
+}
+
+/** Home oxygen concentrator: flow (L/min) and power source. */
+export class OxygenConcentrator {
+  constructor({ equipmentUid, prescribedFlow }, rng = Math.random) {
+    this.equipmentUid = equipmentUid;
+    this.prescribedFlow = prescribedFlow;
+    this.rng = rng;
+    this.failed = false;
+  }
+
+  /** `mainsPower` is false during a simulated power cut: the unit switches to its battery. */
+  sample({ mainsPower = true } = {}) {
+    if (this.failed) return { flow_lpm: 0, power_source: 'NONE' };
+    const flow = this.prescribedFlow + (this.rng() - 0.5) * 0.1;
+    return { flow_lpm: Math.round(flow * 10) / 10, power_source: mainsPower ? 'MAINS' : 'BATTERY' };
   }
 }

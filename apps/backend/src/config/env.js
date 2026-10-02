@@ -33,6 +33,13 @@ export const env = Object.freeze({
   rapidIncreaseThreshold: num(process.env.RAPID_INCREASE_THRESHOLD, 20),
   noteWindowMinutes: num(process.env.NOTE_WINDOW_MINUTES, 120),
   watchdogIntervalMs: num(process.env.WATCHDOG_INTERVAL_MS, 5000),
+  // Telegram caregiver notifications (optional). See README "Phone alerts".
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
+  telegramEscalationChatId: process.env.TELEGRAM_ESCALATION_CHAT_ID || '',
+  telegramUserEmail: process.env.TELEGRAM_USER_EMAIL || 'anita@homecare.demo',
+  telegramApiBase: process.env.TELEGRAM_API_BASE || 'https://api.telegram.org',
+  dashboardUrl: process.env.DASHBOARD_URL || 'http://localhost:5173',
   logLevel: isTest ? process.env.LOG_LEVEL_TEST || 'silent' : process.env.LOG_LEVEL || 'info',
 });
 

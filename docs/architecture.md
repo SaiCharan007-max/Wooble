@@ -116,6 +116,24 @@ stateDiagram-v2
 | WebSocket disconnect | Socket.IO reconnects automatically; the header shows "Reconnecting…"; pages reload data on events |
 | Malformed note / JSON | 400 with a clear message |
 
+## 5b. Equipment, edge alarm and phone alerts
+
+```mermaid
+flowchart LR
+  O2[O2 concentrator<br/>flow + power] --> HUB
+  W[Wearable] --> HUB
+  HUB["Home hub<br/>local alarm (works offline)"] -->|buffered| API[Backend]
+  API --> EQ["Equipment service<br/>FAULT &lt; 50% flow / no power"]
+  EQ --> AL[Alert service]
+  EQ -->|context: oxygen interrupted| RE[Risk engine]
+  AL -->|domain event| TG["Telegram notifier<br/>long-poll, inline buttons"]
+  TG -->|Acknowledge / Escalate / Resolve| AL
+```
+
+- **Equipment**: readings go to `/api/equipment` (idempotent). A status change to FAULT raises an `EQUIPMENT` alert (HIGH, one active per patient), re-assesses risk with `equipment: [{type, status: FAULT}]` (+12 points and a MEDIUM floor), and auto-resolves on recovery. `ON_BATTERY` is audited without alerting.
+- **Edge alarm**: `HubAlarms` in the simulator evaluates every reading with the same critical thresholds as the backend (`criticalFindings` in `packages/shared`). Alarms are raised locally whether or not the cloud is reachable and clear after 5 normal readings. Raise, silence and clear events are queued in the same durable buffer and stored idempotently (`sensor_events.event_uid`).
+- **Telegram**: the alert service emits `alert.changed` domain events after commit. The notifier serialises them per alert: new / upgraded / escalated alerts send a new message (the phone buzzes), while acknowledged / response / resolved edit that message in place. Button taps arrive via `getUpdates` long polling, are accepted only from configured chats, and run the same `alertService` methods as the dashboard (same transactions, same audit). Every send is recorded in `notifications`.
+
 ## 6. Observability
 
 Structured JSON logs (pino) with `request_id`, `patient_id`, `event_type`, `timestamp`, `processing_time_ms`. Key event types: `VITAL_RECEIVED`, `RISK_CALCULATED`, `ALERT_CREATED`, `ALERT_ACKNOWLEDGED`, `ALERT_ESCALATED`, `SENSOR_OFFLINE`, `SENSOR_ONLINE`, `BUFFERED_READING_SYNCED`, `RISK_ENGINE_UNAVAILABLE`, `REDIS_UNAVAILABLE`. The request id is forwarded to the risk engine (`X-Request-Id`).

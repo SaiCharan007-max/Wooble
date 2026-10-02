@@ -24,7 +24,8 @@
     "test:simulator": "npm test -w apps/sensor-simulator",
     "test:backend": "npm test -w apps/backend",
     "build": "npm run build -w apps/frontend",
-    "setup": "npm install && pip install -r apps/risk-engine/requirements.txt && npm run db:migrate"
+    "setup": "npm install && pip install -r apps/risk-engine/requirements.txt && npm run db:migrate",
+    "evaluate": "cd apps/risk-engine && python -m evaluation.evaluate"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

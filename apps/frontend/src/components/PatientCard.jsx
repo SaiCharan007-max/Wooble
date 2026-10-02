@@ -22,6 +22,22 @@ export function DeviceOfflineBanner({ device, buffered }) {
   );
 }
 
+export function EquipmentLine({ equipment }) {
+  if (!equipment?.length) return null;
+  return equipment.map((e) => {
+    const fault = e.status === 'FAULT';
+    const battery = e.status === 'ON_BATTERY';
+    return (
+      <div key={e.equipment_uid} className={`rounded-lg px-3 py-1.5 text-sm ${fault ? 'border border-red-300 bg-red-50 font-semibold text-red-800' : battery ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-700'}`}>
+        🫁 Oxygen concentrator:{' '}
+        {fault ? 'NOT DELIVERING OXYGEN' : e.flow_lpm != null ? `${Number(e.flow_lpm).toFixed(1)} L/min` : '–'}
+        {battery && ' · 🔋 on battery'}
+        <span className="text-xs font-normal text-slate-500"> (prescribed {Number(e.prescribed_flow_lpm).toFixed(1)})</span>
+      </div>
+    );
+  });
+}
+
 export default function PatientCard({ patient, buffered }) {
   const risk = patient.latest_risk;
   const level = risk?.risk_level;
@@ -67,6 +83,7 @@ export default function PatientCard({ patient, buffered }) {
 
       <div className="mt-3 space-y-2">
         <DeviceOfflineBanner device={patient.device} buffered={buffered} />
+        <EquipmentLine equipment={patient.equipment} />
         <div className="flex justify-between text-xs text-slate-500">
           <span>Caregiver: {patient.assigned_caregiver || '—'}</span>
           <span>{patient.device?.status === 'ONLINE' ? '🟢 Sensor online' : patient.device?.status === 'OFFLINE' ? '🟠 Sensor offline' : '⚪ Sensor —'} · {timeAgo(v.timestamp)}</span>

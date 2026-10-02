@@ -50,8 +50,11 @@ app.post('/control', requireToken, (req, res) => {
   }
 });
 app.post('/reset', requireToken, (_req, res) => res.json(simulator.reset()));
+// Silence a local alarm from the home-hub screen (works with no internet at all).
+app.post('/alarms/:patientId/ack', requireToken, (req, res) =>
+  res.json({ acknowledged: simulator.acknowledgeAlarm(req.params.patientId), alarms: simulator.hub.list() }));
 
-// Minimal stand-alone control page (local demo use only).
+// Home-hub screen + demo controls (local use only; it embeds the control token).
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 app.get('/', (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
 app.get('/token.js', (_req, res) => res.type('js').send(`window.CONTROL_TOKEN=${JSON.stringify(config.controlToken)};`));

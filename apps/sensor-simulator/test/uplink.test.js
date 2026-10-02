@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MemoryStore, SendError, Uplink } from '../src/uplink.js';
 import { Simulator } from '../src/simulator.js';
+import { HubAlarms } from '../src/hubAlarms.js';
 import { PROFILES, VirtualPatient } from '../src/vitalsModel.js';
 
 /** Fake backend with idempotent storage keyed by (device, sequence), like the real one. */
@@ -130,7 +131,8 @@ test('sensor failure stops readings; network failure keeps measuring', async () 
   sim.control({ scenario: 'NETWORK_FAILURE' });
   await sim.tick();
   await sim.tick();
-  assert.equal(up.size, 6, 'all three sensors keep buffering during the outage');
+  assert.equal(up.buffer.filter((r) => r.kind === 'vital').length, 6, 'all three sensors keep buffering during the outage');
+  assert.ok(up.buffer.some((r) => r.kind === 'equipment' && r.power_source === 'BATTERY'), 'power cut: concentrator on battery');
   sim.control({ network: 'ONLINE' });
   await sim.tick();
   assert.equal(up.size, 0);
@@ -143,4 +145,60 @@ test('sequence numbers continue after a restart', async () => {
   await sim1.tick();
   const sim2 = new Simulator({ uplink: new Uplink({ send: fakeBackend().send }), stateStore: state });
   assert.equal(sim2.devices[0].sequence, 2);
+});
+
+test('oxygen concentrator failure: 0 L/min, SpO2 falls, local alarm sounds even with the cloud offline', async () => {
+  const up = new Uplink({ send: fakeBackend().send });
+  const sim = new Simulator({ uplink: up, stateStore: new MemoryStore({ sequences: {} }), rng: () => 0.5 });
+  const lakshmi = sim.devices.find((d) => d.equipment);
+  for (const d of sim.devices) d.model.setScenario('NORMAL');
+  sim.control({ scenario: 'NETWORK_FAILURE' });
+  sim.control({ patientId: lakshmi.patientId, equipment: 'FAILURE' });
+  for (let i = 0; i < 30; i += 1) await sim.tick();
+
+  const last = lakshmi.equipment.lastReading;
+  assert.equal(last.flow_lpm, 0);
+  assert.equal(last.power_source, 'NONE');
+  assert.ok(lakshmi.lastReading.spo2 <= 91, `SpO2 fell to ${lakshmi.lastReading.spo2}`);
+  const alarm = sim.hub.list().find((a) => a.patientId === lakshmi.patientId);
+  assert.ok(alarm, 'local alarm raised');
+  assert.equal(alarm.cloudReachable, false);
+  assert.ok(up.buffer.some((e) => e.kind === 'hub_event' && e.type === 'LOCAL_ALARM'), 'alarm queued for later sync');
+
+  assert.ok(sim.acknowledgeAlarm(lakshmi.patientId));
+  assert.ok(up.buffer.some((e) => e.kind === 'hub_event' && e.type === 'LOCAL_ALARM_ACK'));
+});
+
+test('hub alarm clears only after several normal readings', () => {
+  const events = [];
+  const hub = new HubAlarms({ emit: (e) => events.push(e) });
+  const base = { patientId: 'p', deviceUid: 'W', name: 'X', cloudReachable: true };
+  hub.check({ ...base, vitals: { spo2: 86, heart_rate: 90 } });
+  hub.check({ ...base, vitals: { spo2: 86, heart_rate: 90 } });
+  assert.equal(events.length, 1, 'no duplicate alarm events');
+  for (let i = 0; i < 4; i += 1) hub.check({ ...base, vitals: { spo2: 96, heart_rate: 80 } });
+  assert.equal(hub.list().length, 1);
+  hub.check({ ...base, vitals: { spo2: 96, heart_rate: 80 } });
+  assert.equal(hub.list().length, 0);
+  assert.equal(events.at(-1).type, 'LOCAL_ALARM_CLEARED');
+});
+
+test('http sender routes each kind to its endpoint and strips internal fields', async () => {
+  const { httpSender } = await import('../src/uplink.js');
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    calls.push([new URL(url).pathname, JSON.parse(opts.body).readings]);
+    return { ok: true, json: async () => ({ created: 1, duplicates: 0, rejected: 0 }) };
+  };
+  try {
+    const send = httpSender({ backendUrl: 'http://x', deviceApiKey: 'k' });
+    const r = await send([{ kind: 'vital', a: 1, source: 'LIVE' }, { kind: 'equipment', b: 2 }, { kind: 'hub_event', c: 3, source: 'LIVE' }]);
+    assert.deepEqual(calls.map((c) => c[0]), ['/api/vitals', '/api/equipment', '/api/hub-events']);
+    assert.ok(calls.every(([, items]) => items.every((i) => !('kind' in i))));
+    assert.ok(!('source' in calls[2][1][0]));
+    assert.equal(r.created, 3);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

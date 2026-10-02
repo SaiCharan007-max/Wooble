@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import AlertCard from '../components/AlertCard.jsx';
 import { RiskTrajectory, VitalChart } from '../components/Charts.jsx';
 import NotesPanel from '../components/NotesPanel.jsx';
-import { DeviceOfflineBanner } from '../components/PatientCard.jsx';
+import { DeviceOfflineBanner, EquipmentLine } from '../components/PatientCard.jsx';
 import RiskPanel from '../components/RiskPanel.jsx';
 import { api } from '../lib/api.js';
 import { clock, timeAgo } from '../lib/format.js';
@@ -48,7 +48,7 @@ export default function PatientPage() {
       loadVitals();
     }
   });
-  useLiveReload(['alert:new', 'alert:updated', 'device:status', 'note:new', 'caregiver:activity'], loadPatient);
+  useLiveReload(['alert:new', 'alert:updated', 'device:status', 'note:new', 'caregiver:activity', 'equipment:status'], loadPatient, 1000);
 
   if (!patient) return <p className="text-slate-500">{error || 'Loading…'}</p>;
 
@@ -74,6 +74,7 @@ export default function PatientPage() {
       </div>
 
       <DeviceOfflineBanner device={patient.device} />
+      <EquipmentLine equipment={patient.equipment} />
       {synced && patient.device?.status === 'ONLINE' && (
         <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="status">
           ✓ Connection restored — {synced.count} buffered readings synchronised ({clock(synced.from)} – {clock(synced.to)}). Shown as orange dots.

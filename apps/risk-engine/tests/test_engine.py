@@ -20,8 +20,9 @@ def interp(a, b, n):
     return [{k: a[k] + (b[k] - a[k]) * i / (n - 1) for k in a} for i in range(n)]
 
 
-def assess(readings, age=60, conditions=(), signals=(), history=()):
+def assess(readings, age=60, conditions=(), signals=(), history=(), equipment=()):
     req = AssessRequest.model_validate({
+        "equipment": list(equipment),
         "patient": {"age": age, "conditions": [{"condition": c, "riskCategory": cat} for c, cat in conditions]},
         "readings": readings,
         "noteSignals": [{"signal": s} for s in signals],
@@ -128,3 +129,12 @@ def test_api_contract_camel_case():
         assert key in body
     assert client.post("/v1/assess", json={"patient": {"age": 70}, "readings": []}).status_code == 422
     assert client.post("/v1/notes/extract", json={"text": "Feeling dizzy"}).json()["signals"][0]["signal"] == "dizziness"
+
+
+def test_oxygen_supply_failure_requires_attention():
+    r = assess(series([NORMAL] * 12), equipment=[{"type": "OXYGEN_CONCENTRATOR", "status": "FAULT"}])
+    assert r["risk_level"] == "MEDIUM"
+    assert "oxygen" in r["explanation"]
+    assert any("oxygen" in x.lower() for x in r["reasons"])
+    ok = assess(series([NORMAL] * 12), equipment=[{"type": "OXYGEN_CONCENTRATOR", "status": "OK"}])
+    assert ok["risk_level"] == "LOW"
