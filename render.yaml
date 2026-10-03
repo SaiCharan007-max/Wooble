@@ -44,6 +44,8 @@ services:
         sync: false
       - key: RISK_ENGINE_TIMEOUT_MS
         value: "10000"
+      - key: OFFLINE_GRACE_SECONDS
+        value: "120"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -85,3 +87,5 @@ services:
           envVarKey: SIMULATOR_CONTROL_TOKEN
       - key: BACKEND_URL # the homeward-app URL, e.g. https://homeward-app.onrender.com
         sync: false
+      - key: DEMO_START # everyone starts NORMAL; visitors drive the demo themselves
+        value: calm

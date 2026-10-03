@@ -15,4 +15,6 @@ export const config = Object.freeze({
   batchSize: Number(process.env.SIMULATOR_BATCH_SIZE || 100),
   retryBaseMs: Number(process.env.SIMULATOR_RETRY_BASE_MS || 1000),
   retryMaxMs: Number(process.env.SIMULATOR_RETRY_MAX_MS || 30000),
+  // 'calm' = every patient starts NORMAL (hosted demo for judges); default = seeded story scenarios
+  demoStart: process.env.DEMO_START || 'story',
 });

@@ -21,6 +21,11 @@ const watchdog = setInterval(() => {
     .catch((err) => logger.error({ err: err.message }, 'watchdog failed'));
 }, env.watchdogIntervalMs);
 
+// Free hosting puts idle services to sleep: wake the simulator and risk engine as soon as we start.
+for (const url of [`${env.simulatorUrl}/health`, `${env.riskEngineUrl}/health`]) {
+  fetch(url, { signal: AbortSignal.timeout(90000) }).catch(() => {});
+}
+
 server.listen(env.port, () => {
   logger.info({ port: env.port, jobs: queueMode() }, `backend listening on http://localhost:${env.port}`);
 });

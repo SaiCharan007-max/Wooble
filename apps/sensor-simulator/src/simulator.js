@@ -2,10 +2,14 @@
 // every tick, runs the local safety check, and hands everything to the store-and-forward uplink.
 import { DEMO_PATIENTS, SCENARIOS, SPEEDS } from '@homecare/shared';
 import { HubAlarms } from './hubAlarms.js';
-import { OxygenConcentrator, VirtualPatient } from './vitalsModel.js';
+import { NORMAL_VITALS, OxygenConcentrator, VirtualPatient } from './vitalsModel.js';
+
+// Sequence numbers must never go backwards, even if the hub's storage is wiped (e.g. a free cloud instance
+// restarting). Starting from the current time in ms guarantees that: new numbers are always larger than old ones.
+const startSequence = (saved) => Math.max(saved || 0, Date.now());
 
 export class Simulator {
-  constructor({ uplink, stateStore, patients = DEMO_PATIENTS, rng = Math.random, now = () => new Date(), log = () => {} }) {
+  constructor({ uplink, stateStore, patients = DEMO_PATIENTS, rng = Math.random, now = () => new Date(), log = () => {}, calm = false }) {
     this.uplink = uplink;
     this.stateStore = stateStore;
     this.now = now;
@@ -13,19 +17,19 @@ export class Simulator {
     this.speed = 1;
     this.hub = new HubAlarms({ emit: (event) => this.uplink.enqueue(event), now, log });
     const saved = stateStore.load({ sequences: {} });
+    // "calm" demo start: everyone stable and healthy, so visitors (judges) drive the story themselves
     this.devices = patients.map((p) => ({
       deviceUid: p.deviceUid,
       patientId: p.patientId,
       name: p.name,
-      defaultScenario: p.defaultScenario,
-      scenario: p.defaultScenario,
-      // sequence numbers survive restarts, otherwise new readings would look like duplicates
-      sequence: saved.sequences[p.deviceUid] || 0,
-      model: new VirtualPatient(p.start, rng),
+      defaultScenario: calm ? 'NORMAL' : p.defaultScenario,
+      scenario: calm ? 'NORMAL' : p.defaultScenario,
+      sequence: startSequence(saved.sequences[p.deviceUid]),
+      model: new VirtualPatient(calm ? NORMAL_VITALS : p.start, rng),
       lastReading: null,
       equipment: p.equipment ? {
         ...p.equipment,
-        sequence: saved.sequences[p.equipment.equipmentUid] || 0,
+        sequence: startSequence(saved.sequences[p.equipment.equipmentUid]),
         model: new OxygenConcentrator(p.equipment, rng),
         lastReading: null,
       } : null,

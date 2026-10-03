@@ -143,8 +143,12 @@ test('sequence numbers continue after a restart', async () => {
   const sim1 = new Simulator({ uplink: new Uplink({ send: fakeBackend().send }), stateStore: state });
   await sim1.tick();
   await sim1.tick();
+  const before = sim1.devices[0].sequence;
   const sim2 = new Simulator({ uplink: new Uplink({ send: fakeBackend().send }), stateStore: state });
-  assert.equal(sim2.devices[0].sequence, 2);
+  assert.ok(sim2.devices[0].sequence >= before, 'never goes backwards after a restart');
+  await new Promise((r) => setTimeout(r, 20)); // a real restart takes seconds; readings are 2 s apart
+  const wiped = new Simulator({ uplink: new Uplink({ send: fakeBackend().send }), stateStore: new MemoryStore({ sequences: {} }) });
+  assert.ok(wiped.devices[0].sequence >= before, 'even if the stored state was lost');
 });
 
 test('oxygen concentrator failure: 0 L/min, SpO2 falls, local alarm sounds even with the cloud offline', async () => {
@@ -201,4 +205,10 @@ test('http sender routes each kind to its endpoint and strips internal fields', 
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test('calm demo start: everyone NORMAL with healthy vitals', () => {
+  const sim = new Simulator({ uplink: new Uplink({ send: fakeBackend().send }), stateStore: new MemoryStore({ sequences: {} }), calm: true });
+  assert.ok(sim.devices.every((d) => d.scenario === 'NORMAL' && d.defaultScenario === 'NORMAL'));
+  assert.ok(sim.devices.every((d) => d.model.state.spo2 >= 96));
 });

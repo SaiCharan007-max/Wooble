@@ -9,7 +9,10 @@ import { alertService, publish } from './alertService.js';
 import { audit, SYSTEM_CTX } from './auditService.js';
 
 /** Missing data is treated as a DEVICE problem - it never changes the patient's risk score. */
+const startedAt = Date.now();
+
 export async function detectOfflineSensors() {
+  if (Date.now() - startedAt < env.offlineGraceSeconds * 1000) return 0; // just woke up: sensors are reconnecting
   const stale = await deviceRepository.listStale(env.sensorOfflineSeconds);
   for (const device of stale) {
     const alert = await withTransaction(async (client) => {

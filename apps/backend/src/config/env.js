@@ -28,6 +28,8 @@ export const env = Object.freeze({
   simulatorUrl: process.env.SIMULATOR_URL || 'http://localhost:4100',
   simulatorControlToken: process.env.SIMULATOR_CONTROL_TOKEN || 'dev-simulator-token',
   sensorOfflineSeconds: num(process.env.SENSOR_OFFLINE_SECONDS, 15),
+  // after a (cold) start, give sensors this long to reconnect before calling them offline
+  offlineGraceSeconds: num(process.env.OFFLINE_GRACE_SECONDS, 0),
   ackTimeoutSeconds: num(process.env.ACK_TIMEOUT_SECONDS, 60),
   alertCooldownSeconds: num(process.env.ALERT_COOLDOWN_SECONDS, 60),
   rapidIncreaseThreshold: num(process.env.RAPID_INCREASE_THRESHOLD, 20),

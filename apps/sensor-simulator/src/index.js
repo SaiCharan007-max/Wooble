@@ -16,7 +16,9 @@ const uplink = new Uplink({
   maxDelayMs: config.retryMaxMs,
   log,
 });
-const simulator = new Simulator({ uplink, stateStore: new FileStore(path.join(config.dataDir, 'state.json')), log });
+const simulator = new Simulator({
+  uplink, stateStore: new FileStore(path.join(config.dataDir, 'state.json')), log, calm: config.demoStart === 'calm',
+});
 if (uplink.size) log(`resuming with ${uplink.size} buffered readings from a previous run`);
 
 // ---------------------------------------------------------------- tick loop
